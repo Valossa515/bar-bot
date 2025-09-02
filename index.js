@@ -177,11 +177,11 @@ async function getPokemonInfo(name) {
   
       const url = `https://unite-db.com/pokemon/${name}`;
       console.log(`Navegando para: ${url}`);
-      await page.goto(url, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.goto(url, { waitUntil: "networkidle2", timeout: 150000 });
   
       // --- ETAPA 1: Capturar informações estáticas primeiro ---
       console.log("Capturando informações gerais (nome, tipo de dano)...");
-      await page.waitForSelector(".character-info .damage-wrapper h3", { timeout: 20000 });
+      await page.waitForSelector(".character-info .damage-wrapper h3", { timeout: 150000 });
       
       scrapedGeneralInfo = await page.evaluate(() => {
           return {
@@ -192,7 +192,7 @@ async function getPokemonInfo(name) {
   
       // --- ETAPA 2: Interagir com a página e esperar pelo conteúdo dinâmico ---
       const buildsTabSelector = "#app > div.container > section > ul > li:nth-child(2)";
-      await page.waitForSelector(buildsTabSelector, { timeout: 15000 });
+      await page.waitForSelector(buildsTabSelector, { timeout: 150000 });
       await page.click(buildsTabSelector);
   
       console.log("Aguardando todas as builds serem renderizadas...");
