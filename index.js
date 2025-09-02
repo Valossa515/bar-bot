@@ -172,7 +172,7 @@ async function getPokemonInfo(name) {
   
       const url = `https://unite-db.com/pokemon/${name}`;
       console.log(`Navegando para: ${url}`);
-      await page.goto(url, { waitUntil: "networkidle2", timeout: 150000 });
+      await page.goto(url, { waitUntil: "networkidle2", timeout: 12000 });
   
       // --- ETAPA 1: Capturar informações estáticas primeiro ---
       console.log("Capturando informações gerais (nome, tipo de dano)...");
@@ -187,7 +187,7 @@ async function getPokemonInfo(name) {
   
       // --- ETAPA 2: Interagir com a página e esperar pelo conteúdo dinâmico ---
       const buildsTabSelector = "#app > div.container > section > ul > li:nth-child(2)";
-      await page.waitForSelector(buildsTabSelector, { timeout: 150000 });
+      await page.waitForSelector(buildsTabSelector, { timeout: 12000 });
       await page.click(buildsTabSelector);
   
       console.log("Aguardando todas as builds serem renderizadas...");
@@ -201,7 +201,7 @@ async function getPokemonInfo(name) {
             )
           );
         },
-        { timeout: 150000 }
+        { timeout: 12000 }
       );
       console.log("Todas as builds foram carregadas.");
   
