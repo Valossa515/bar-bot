@@ -206,7 +206,7 @@ async function getPokemonInfo(name) {
             )
           );
         },
-        { timeout: 30000 }
+        { timeout: 150000 }
       );
       console.log("Todas as builds foram carregadas.");
   
