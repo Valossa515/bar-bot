@@ -4,12 +4,9 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const axios = require("axios");
 const NodeCache = require("node-cache");
-const puppeteer = require("puppeteer-extra");
-const StealthPlugin = require("puppeteer-extra-plugin-stealth");
+const chromium = require("@sparticuz/chromium");
+const puppeteer = require("puppeteer-core");
 require("dotenv").config();
-
-// Ativa o plugin para tornar o Puppeteer menos detectável
-puppeteer.use(StealthPlugin());
 
 // --- ATENÇÃO ---
 // É uma MÁ PRÁTICA de segurança colocar o token diretamente no código.
@@ -168,11 +165,13 @@ async function getPokemonInfo(name) {
     try {
       console.log(`Iniciando scraping para '${name}' no Unite-DB...`);
       browser = await puppeteer.launch({
-        headless: true,
-        executablePath: puppeteer.executablePath(), // usa o Chromium baixado pelo Puppeteer
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+        ignoreHTTPSErrors: true,
       });
-  
+      
       page = await browser.newPage();
       await page.setViewport({ width: 1366, height: 900 });
   

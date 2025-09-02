@@ -4,21 +4,18 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-   "start": "node index.js",
-    "postinstall": "puppeteer install"
+    "start": "node index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@sparticuz/chromium": "^123.0.1",
     "axios": "^1.11.0",
-    "cheerio": "^1.1.0",
     "discord.js": "^14.22.1",
     "dotenv": "^17.2.1",
     "node-cache": "^5.1.2",
-    "puppeteer": "^24.17.1",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-core": "^22.13.1"
   }
 }
