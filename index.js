@@ -51,79 +51,70 @@ client.on("messageCreate", async (message) => {
       await message.channel.sendTyping();
       const info = await getPokemonInfo(pokemonName);
 
-      if (!info || info.builds.length === 0) {
-        return message.reply(
-          `Não encontrei builds para o Pokémon "${pokemonName}". Verifique o nome e tente novamente.`
-        );
-      }
-
-      // Filtra apenas as builds que têm habilidades (moves) preenchidas.
+      // Filtra apenas as builds que têm habilidades (moves) preenchidas
       const validBuilds = info.builds.filter(
         (build) => build.moves && build.moves.length > 0
       );
 
-      if (validBuilds.length > 0) {
-        const embeds = validBuilds.map((build) => {
-          const embed = new EmbedBuilder()
-            .setAuthor({ name: `${info.name} - ${info.damageType}` })
-            .setTitle(build.buildName)
-            .setDescription(build.path || " ")
-            .setColor(0xffcb05)
-            .addFields(
-              {
-                name: "⚔️ Habilidades (Moves)",
-                value: build.moves
-                  .map((m) => `**${m.name}** (${m.level})`)
-                  .join("\n"),
-                inline: true,
-              },
-              {
-                name: "🎒 Itens (Held Items)",
-                value: build.heldItems.map((i) => i.name).join("\n"),
-                inline: true,
-              }
-            );
-
-          if (info.image) {
-            embed.setThumbnail(info.image);
-          }
-
-          if (build.battleItem && build.battleItem.name) {
-            embed.addFields({
-              name: "⚡ Item de Batalha",
-              value: build.battleItem.name,
-              inline: false,
-            });
-          }
-
-          if (build.emblemLoadout) {
-            embed.addFields({
-              name: "🛡️ Emblemas",
-              value: `[Ver configuração](${build.emblemLoadout})`,
-              inline: false,
-            });
-          }
-
-          return embed;
-        });
-
-        // Envia as builds que foram carregadas corretamente
-        await message.channel.send({
-          content: `Encontrei ${embeds.length} build(s) principal(is) para **${info.name}**:`,
-          embeds: embeds,
-        });
-
-        // Verifica se algumas builds não foram mostradas e avisa o usuário.
-        if (info.builds.length > validBuilds.length) {
-          await message.channel.send({
-            content: `Foram encontradas outras combinações de builds no site.\nPara ver todas as possibilidades, acesse: https://unite-db.com/pokemon/${pokemonName}`,
-          });
-        }
-      } else {
-        // Se mesmo após o scraping nenhuma build tiver dados, envia a mensagem de erro.
+      if (validBuilds.length === 0) {
         return message.reply(
           `Não foi possível carregar builds para "${pokemonName}". Tente novamente mais tarde.`
         );
+      }
+
+      const embeds = validBuilds.map((build) => {
+        const embed = new EmbedBuilder()
+          .setAuthor({ name: `${info.name} - ${info.damageType}` })
+          .setTitle(build.buildName)
+          .setDescription(build.path || " ")
+          .setColor(0xffcb05)
+          .addFields(
+            {
+              name: "⚔️ Habilidades (Moves)",
+              value: build.moves
+                .map((m) => `**${m.name}** (${m.level})`)
+                .join("\n"),
+              inline: true,
+            },
+            {
+              name: "🎒 Itens (Held Items)",
+              value: build.heldItems.map((i) => i.name).join("\n"),
+              inline: true,
+            }
+          );
+
+        if (info.image) embed.setThumbnail(info.image);
+
+        if (build.battleItem && build.battleItem.name) {
+          embed.addFields({
+            name: "⚡ Item de Batalha",
+            value: build.battleItem.name,
+            inline: false,
+          });
+        }
+
+        if (build.emblemLoadout) {
+          embed.addFields({
+            name: "🛡️ Emblemas",
+            value: `[Ver configuração](${build.emblemLoadout})`,
+            inline: false,
+          });
+        }
+
+        return embed;
+      });
+
+      // Envia as builds que foram carregadas corretamente
+      await message.channel.send({
+        content: `Encontrei ${embeds.length} build(s) principal(is) para **${info.name}**:`,
+        embeds: embeds,
+      });
+
+      // Se existirem builds adicionais não mostradas, avisa o usuário
+      if (info.builds.length > validBuilds.length) {
+        await message.channel.send({
+          content: `Foram encontradas outras combinações de builds no site.\nPara ver todas as possibilidades, acesse: https://unite-db.com/pokemon/${pokemonName}`,
+        });
       }
     } catch (err) {
       console.error(err);
