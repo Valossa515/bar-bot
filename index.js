@@ -32,7 +32,7 @@ const cache = new NodeCache({ stdTTL: 3600 }); // Cache de 1 hora
 // -----------------------------------------------------------------------------
 
 // Evento que dispara quando o bot está online e pronto
-client.once("ready", () => {
+client.on("clientReady", () => {
   console.log(`Bot logado como ${client.user.tag}`);
 });
 
@@ -169,6 +169,8 @@ async function getPokemonInfo(name) {
       console.log(`Iniciando scraping para '${name}' no Unite-DB...`);
       browser = await puppeteer.launch({
         headless: true,
+        executablePath:
+          process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(), // usa Chrome do Render ou Chromium baixado
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
       });
   
