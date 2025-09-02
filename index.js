@@ -47,6 +47,8 @@ client.on("messageCreate", async (message) => {
     if (!pokemonName)
       return message.reply("Por favor, informe o nome do Pokémon.");
 
+    const waitingMessage = await message.reply(`🔍 Buscando informações para **${pokemonName}**, isso pode demorar um pouco...`);
+
     try {
       await message.channel.sendTyping();
       const info = await getPokemonInfo(pokemonName);
@@ -105,6 +107,8 @@ client.on("messageCreate", async (message) => {
       });
 
       // Envia as builds que foram carregadas corretamente
+      await waitingMessage.delete(); 
+
       await message.channel.send({
         content: `Encontrei ${embeds.length} build(s) principal(is) para **${info.name}**:`,
         embeds: embeds,
@@ -118,7 +122,7 @@ client.on("messageCreate", async (message) => {
       }
     } catch (err) {
       console.error(err);
-      message.reply("Ocorreu um erro ao buscar as informações do Pokémon.");
+      await waitingMessage.edit("Ocorreu um erro ao buscar as informações do Pokémon.");
     }
   }
 });
