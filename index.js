@@ -169,8 +169,7 @@ async function getPokemonInfo(name) {
       console.log(`Iniciando scraping para '${name}' no Unite-DB...`);
       browser = await puppeteer.launch({
         headless: true,
-        executablePath:
-          process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(), // usa Chrome do Render ou Chromium baixado
+        executablePath: puppeteer.executablePath(), // usa o Chromium baixado pelo Puppeteer
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
       });
   
