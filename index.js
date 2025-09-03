@@ -7,11 +7,14 @@ const NodeCache = require("node-cache");
 const chromium = require("@sparticuz/chromium");
 const puppeteer = require("puppeteer-core");
 require("dotenv").config();
+const express = require("express");
+const app = express();
 
 // --- ATENÇÃO ---
 // É uma MÁ PRÁTICA de segurança colocar o token diretamente no código.
 // Considere usar variáveis de ambiente (ex: process.env.DISCORD_TOKEN).
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
+const port = process.env.PORT || 3000;
 
 const client = new Client({
   intents: [
@@ -276,3 +279,11 @@ async function getPokemonInfo(name) {
 // 4. LOGIN DO BOT
 // -----------------------------------------------------------------------------
 client.login(BOT_TOKEN);
+
+app.get("/", (req, res) => {
+  res.send("Hello World");
+});
+
+app.listen(port, () => {
+  console.log(`Example app listening on port ${port}`)
+})
