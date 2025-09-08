@@ -281,9 +281,9 @@ async function getPokemonInfo(name) {
 client.login(BOT_TOKEN);
 
 app.get("/", (req, res) => {
-  res.send("Hello World");
+  res.send("Bot do Discord está rodando 🚀");
 });
 
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
+  console.log(`Servidor web rodando na porta ${port}`)
 })
