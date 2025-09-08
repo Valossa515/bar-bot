@@ -27,6 +27,9 @@ const client = new Client({
 const PREFIX = "!";
 const cache = new NodeCache({ stdTTL: 3600 }); // Cache de 1 hora
 
+// Armazena os IDs dos usuários que estão com uma busca em andamento
+const processingUsers = new Set();
+
 // -----------------------------------------------------------------------------
 // 2. EVENTOS DO BOT
 // -----------------------------------------------------------------------------
@@ -36,33 +39,36 @@ client.on("clientReady", () => {
   console.log(`Bot logado como ${client.user.tag}`);
 });
 
-let isProcessing = false;
-
-if (isProcessing) {
-  return message.reply("🚫 Aguarde, ainda estou processando outra requisição.");
-}
 // Evento que dispara a cada mensagem recebida
 client.on("messageCreate", async (message) => {
   if (!message.content.startsWith(PREFIX) || message.author.bot) return;
-  
   const [command, ...args] = message.content
     .trim()
     .substring(PREFIX.length)
     .split(/\s+/);
 
   if (command.toLowerCase() === "pokemon") {
+    // --- AJUSTE: VERIFICA SE O USUÁRIO JÁ ESTÁ FAZENDO UMA BUSCA ---
+    if (processingUsers.has(message.author.id)) {
+      return message.reply(
+        "🚫 Você já tem uma busca em andamento. Por favor, aguarde ela terminar."
+      );
+    }
+
     const pokemonName = args.join(" ").toLowerCase();
     if (!pokemonName)
       return message.reply("Por favor, informe o nome do Pokémon.");
 
-    isProcessing = true;
-    const waitingMessage = await message.reply(`🔍 Buscando informações para **${pokemonName}**, isso pode demorar um pouco...`);
+    // --- AJUSTE: ADICIONA O USUÁRIO À LISTA DE PROCESSAMENTO ---
+    processingUsers.add(message.author.id);
+    const waitingMessage = await message.reply(
+      `🔍 Buscando informações para **${pokemonName}**, isso pode demorar um pouco...`
+    );
 
     try {
       await message.channel.sendTyping();
-      const info = await getPokemonInfo(pokemonName);
+      const info = await getPokemonInfo(pokemonName); // Filtra apenas as builds que têm habilidades (moves) preenchidas
 
-      // Filtra apenas as builds que têm habilidades (moves) preenchidas
       const validBuilds = info.builds.filter(
         (build) => build.moves && build.moves.length > 0
       );
@@ -113,17 +119,15 @@ client.on("messageCreate", async (message) => {
         }
 
         return embed;
-      });
+      }); // Envia as builds que foram carregadas corretamente
 
-      // Envia as builds que foram carregadas corretamente
-      await waitingMessage.delete(); 
+      await waitingMessage.delete();
 
       await message.channel.send({
         content: `Encontrei ${embeds.length} build(s) principal(is) para **${info.name}**:`,
         embeds: embeds,
-      });
+      }); // Se existirem builds adicionais não mostradas, avisa o usuário
 
-      // Se existirem builds adicionais não mostradas, avisa o usuário
       if (info.builds.length > validBuilds.length) {
         await message.channel.send({
           content: `Foram encontradas outras combinações de builds no site.\nPara ver todas as possibilidades, acesse: https://unite-db.com/pokemon/${pokemonName}`,
@@ -131,9 +135,12 @@ client.on("messageCreate", async (message) => {
       }
     } catch (err) {
       console.error(err);
-      await waitingMessage.edit("❌ Ocorreu um erro ao buscar as informações do Pokémon.");
+      await waitingMessage.edit(
+        "❌ Ocorreu um erro ao buscar as informações do Pokémon."
+      );
     } finally {
-      isProcessing = false;
+      // --- AJUSTE: REMOVE O USUÁRIO DA LISTA AO FINALIZAR ---
+      processingUsers.delete(message.author.id);
     }
   }
 });
@@ -141,7 +148,12 @@ client.on("messageCreate", async (message) => {
 // -----------------------------------------------------------------------------
 // Função utilitária de retry
 // -----------------------------------------------------------------------------
-async function retryOperation(fn, retries = 2, delay = 2000, label = "operação") {
+async function retryOperation(
+  fn,
+  retries = 2,
+  delay = 2000,
+  label = "operação"
+) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await fn();
@@ -171,7 +183,9 @@ async function getPokemonInfo(name) {
     apiData = res.data;
     console.log(`Dados de '${name}' obtidos da API.`);
   } catch (err) {
-    console.log("API não retornou dados. Prosseguindo com scraping no Unite-DB.");
+    console.log(
+      "API não retornou dados. Prosseguindo com scraping no Unite-DB."
+    );
   }
 
   let scrapedBuilds = [];
@@ -192,20 +206,21 @@ async function getPokemonInfo(name) {
     await page.setViewport({ width: 1366, height: 900 });
 
     const url = `https://unite-db.com/pokemon/${name}`;
-    console.log(`Navegando para: ${url}`);
+    console.log(`Navegando para: ${url}`); // Garante carregamento da página com retry
 
-    // Garante carregamento da página com retry
     await retryOperation(
       () => page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 }),
       2,
       2000,
       "page.goto"
-    );
+    ); // Capturar tipo de dano
 
-    // Capturar tipo de dano
     console.log("Capturando informações gerais...");
     await retryOperation(
-      () => page.waitForSelector(".character-info .damage-wrapper h3", { timeout: 30000 }),
+      () =>
+        page.waitForSelector(".character-info .damage-wrapper h3", {
+          timeout: 30000,
+        }),
       2,
       2000,
       "waitForSelector(damage-wrapper)"
@@ -214,28 +229,30 @@ async function getPokemonInfo(name) {
     scrapedGeneralInfo = await page.evaluate(() => {
       return {
         damageType:
-          document.querySelector(".damage-wrapper > h3")?.textContent.trim() || "Não especificado",
+          document.querySelector(".damage-wrapper > h3")?.textContent.trim() ||
+          "Não especificado",
       };
     });
-    console.log(`Tipo de Dano encontrado: ${scrapedGeneralInfo.damageType}`);
+    console.log(`Tipo de Dano encontrado: ${scrapedGeneralInfo.damageType}`); // Abrir aba de builds
 
-    // Abrir aba de builds
-    const buildsTabSelector = "#app > div.container > section > ul > li:nth-child(2)";
+    const buildsTabSelector =
+      "#app > div.container > section > ul > li:nth-child(2)";
     await retryOperation(
       () => page.waitForSelector(buildsTabSelector, { timeout: 30000 }),
       2,
       2000,
       "waitForSelector(buildsTab)"
     );
-    await page.click(buildsTabSelector);
+    await page.click(buildsTabSelector); // Esperar builds renderizarem
 
-    // Esperar builds renderizarem
     console.log("Aguardando todas as builds serem renderizadas...");
     await retryOperation(
       () =>
         page.waitForFunction(
           () => {
-            const buildContainers = document.querySelectorAll("div.details.builds div.build");
+            const buildContainers = document.querySelectorAll(
+              "div.details.builds div.build"
+            );
             return (
               buildContainers.length > 0 &&
               Array.from(buildContainers).every((build) =>
@@ -249,16 +266,17 @@ async function getPokemonInfo(name) {
       2000,
       "waitForFunction(builds carregadas)"
     );
-    console.log("Todas as builds foram carregadas.");
+    console.log("Todas as builds foram carregadas."); // Extrair dados
 
-    // Extrair dados
     scrapedBuilds = await page.evaluate(() => {
       const normalizeName = (s) => {
         if (!s) return "";
         return s.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
       };
 
-      const buildEls = document.querySelectorAll("div.details.builds div.build");
+      const buildEls = document.querySelectorAll(
+        "div.details.builds div.build"
+      );
       const builds = [];
 
       buildEls.forEach((buildEl) => {
@@ -271,26 +289,37 @@ async function getPokemonInfo(name) {
           emblemLoadout: "",
         };
 
-        buildEl.querySelectorAll(".selected-abilities .ability").forEach((moveEl) => {
-          const img = moveEl.querySelector(".ability-icon");
-          const level = moveEl.querySelector("p.level")?.textContent.trim();
-          if (img && img.src) {
-            const fileName = img.src.split("/").pop();
-            const moveName = decodeURIComponent(fileName).replace(".png", "").trim();
-            build.moves.push({ name: moveName, level: level });
-          }
-        });
+        buildEl
+          .querySelectorAll(".selected-abilities .ability")
+          .forEach((moveEl) => {
+            const img = moveEl.querySelector(".ability-icon");
+            const level = moveEl.querySelector("p.level")?.textContent.trim();
+            if (img && img.src) {
+              const fileName = img.src.split("/").pop();
+              const moveName = decodeURIComponent(fileName)
+                .replace(".png", "")
+                .trim();
+              build.moves.push({ name: moveName, level: level });
+            }
+          });
 
-        buildEl.querySelectorAll(".wrapper.held:not(.optional) section.item").forEach((itemEl) => {
-          const href = itemEl.querySelector("a.item-name")?.href;
-          if (href) build.heldItems.push({ name: normalizeName(href.split("/").pop()) });
-        });
+        buildEl
+          .querySelectorAll(".wrapper.held:not(.optional) section.item")
+          .forEach((itemEl) => {
+            const href = itemEl.querySelector("a.item-name")?.href;
+            if (href)
+              build.heldItems.push({
+                name: normalizeName(href.split("/").pop()),
+              });
+          });
 
         const battleItemElement = buildEl.querySelector(
           ".wrapper.battle:not(.optional) section.item a.item-name"
         );
         if (battleItemElement) {
-          build.battleItem = { name: normalizeName(battleItemElement.href.split("/").pop()) };
+          build.battleItem = {
+            name: normalizeName(battleItemElement.href.split("/").pop()),
+          };
         }
 
         const emblemLink = buildEl.querySelector(".emblem-loadout a");
@@ -319,7 +348,6 @@ async function getPokemonInfo(name) {
   return finalInfo;
 }
 
-
 // -----------------------------------------------------------------------------
 // 4. LOGIN DO BOT
 // -----------------------------------------------------------------------------
@@ -330,5 +358,5 @@ app.get("/", (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Servidor web rodando na porta ${port}`)
-})
+  console.log(`Servidor web rodando na porta ${port}`);
+});
