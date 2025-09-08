@@ -36,10 +36,15 @@ client.on("clientReady", () => {
   console.log(`Bot logado como ${client.user.tag}`);
 });
 
+let isProcessing = false;
+
+if (isProcessing) {
+  return message.reply("🚫 Aguarde, ainda estou processando outra requisição.");
+}
 // Evento que dispara a cada mensagem recebida
 client.on("messageCreate", async (message) => {
   if (!message.content.startsWith(PREFIX) || message.author.bot) return;
-
+  
   const [command, ...args] = message.content
     .trim()
     .substring(PREFIX.length)
@@ -50,6 +55,7 @@ client.on("messageCreate", async (message) => {
     if (!pokemonName)
       return message.reply("Por favor, informe o nome do Pokémon.");
 
+    isProcessing = true;
     const waitingMessage = await message.reply(`🔍 Buscando informações para **${pokemonName}**, isso pode demorar um pouco...`);
 
     try {
@@ -125,7 +131,9 @@ client.on("messageCreate", async (message) => {
       }
     } catch (err) {
       console.error(err);
-      await waitingMessage.edit("Ocorreu um erro ao buscar as informações do Pokémon.");
+      await waitingMessage.edit("❌ Ocorreu um erro ao buscar as informações do Pokémon.");
+    } finally {
+      isProcessing = false;
     }
   }
 });
