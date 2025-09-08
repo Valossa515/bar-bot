@@ -131,149 +131,186 @@ client.on("messageCreate", async (message) => {
 });
 
 // -----------------------------------------------------------------------------
-// 3. FUNÇÃO DE SCRAPING E LÓGICA PRINCIPAL
+// Função utilitária de retry
 // -----------------------------------------------------------------------------
-
-async function getPokemonInfo(name) {
-    name = name.toLowerCase();
-    const cached = cache.get(name);
-    if (cached) {
-      console.log(`Retornando dados de '${name}' do cache.`);
-      return cached;
-    }
-  
-    let apiData = null;
+async function retryOperation(fn, retries = 2, delay = 2000, label = "operação") {
+  for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const res = await axios.get(`https://uniteapi.dev/p/${name}?type=auto`);
-      apiData = res.data;
-      console.log(`Dados de '${name}' obtidos da API.`);
+      return await fn();
     } catch (err) {
-      console.log(
-        "API não retornou dados. Prosseguindo com scraping no Unite-DB."
-      );
+      console.log(`[${label}] Tentativa ${attempt} falhou: ${err.message}`);
+      if (attempt === retries) throw err; // se esgotar tentativas, lança erro
+      console.log(`[${label}] Nova tentativa em ${delay / 1000}s...`);
+      await new Promise((r) => setTimeout(r, delay));
     }
-  
-    let scrapedBuilds = [];
-    let scrapedGeneralInfo = {
-        damageType: "Não especificado"
-    };
-    let browser;
-    let page;
-  
-    try {
-      console.log(`Iniciando scraping para '${name}' no Unite-DB...`);
-      browser = await puppeteer.launch({
-        args: chromium.args,
-        defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath(),
-        headless: chromium.headless,
-        ignoreHTTPSErrors: true,
-      });
-      
-      page = await browser.newPage();
-      await page.setViewport({ width: 1366, height: 900 });
-  
-      const url = `https://unite-db.com/pokemon/${name}`;
-      console.log(`Navegando para: ${url}`);
-      await page.goto(url, { waitUntil: "networkidle2", timeout: 600000 });
-  
-      // --- ETAPA 1: Capturar informações estáticas primeiro ---
-      console.log("Capturando informações gerais (nome, tipo de dano)...");
-      await page.waitForSelector(".character-info .damage-wrapper h3", { timeout: 600000 });
-      
-      scrapedGeneralInfo = await page.evaluate(() => {
-          return {
-              damageType: document.querySelector('.damage-wrapper > h3')?.textContent.trim() || 'Não especificado'
-          };
-      });
-      console.log(`Tipo de Dano encontrado: ${scrapedGeneralInfo.damageType}`);
-  
-      // --- ETAPA 2: Interagir com a página e esperar pelo conteúdo dinâmico ---
-      const buildsTabSelector = "#app > div.container > section > ul > li:nth-child(2)";
-      await page.waitForSelector(buildsTabSelector, { timeout: 600000 });
-      await page.click(buildsTabSelector);
-  
-      console.log("Aguardando todas as builds serem renderizadas...");
-      await page.waitForFunction(
-        () => {
-          const buildContainers = document.querySelectorAll("div.details.builds div.build");
-          return (
-            buildContainers.length > 0 &&
-            Array.from(buildContainers).every((build) =>
-              build.querySelector(".selected-abilities .ability-icon")
-            )
-          );
-        },
-        { timeout: 600000 }
-      );
-      console.log("Todas as builds foram carregadas.");
-  
-      // --- ETAPA 3: Capturar as informações das builds ---
-      scrapedBuilds = await page.evaluate(() => {
-          const normalizeName = (s) => {
-              if (!s) return "";
-              return s.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
-          };
-  
-          const buildEls = document.querySelectorAll("div.details.builds div.build");
-          const builds = [];
-  
-          buildEls.forEach((buildEl) => {
-              const build = {
-                  buildName: buildEl.querySelector("h3.title")?.textContent.trim(),
-                  path: buildEl.querySelector("p.lane")?.textContent.trim(),
-                  moves: [],
-                  heldItems: [],
-                  battleItem: null,
-                  emblemLoadout: "",
-              };
-  
-              buildEl.querySelectorAll(".selected-abilities .ability").forEach((moveEl) => {
-                  const img = moveEl.querySelector(".ability-icon");
-                  const level = moveEl.querySelector("p.level")?.textContent.trim();
-                  if (img && img.src) {
-                      const fileName = img.src.split("/").pop();
-                      const moveName = decodeURIComponent(fileName).replace(".png", "").trim();
-                      build.moves.push({ name: moveName, level: level });
-                  }
-              });
-  
-              buildEl.querySelectorAll(".wrapper.held:not(.optional) section.item").forEach((itemEl) => {
-                  const href = itemEl.querySelector("a.item-name")?.href;
-                  if (href) build.heldItems.push({ name: normalizeName(href.split("/").pop()) });
-              });
-  
-              const battleItemElement = buildEl.querySelector(".wrapper.battle:not(.optional) section.item a.item-name");
-              if (battleItemElement) {
-                  build.battleItem = { name: normalizeName(battleItemElement.href.split("/").pop()) };
-              }
-  
-              const emblemLink = buildEl.querySelector(".emblem-loadout a");
-              if (emblemLink) build.emblemLoadout = emblemLink.href;
-  
-              builds.push(build);
-          });
-  
-          return builds;
-      });
-  
-    } catch (err) {
-      console.error(`Erro no scraping para '${name}':`, err.message);
-    } finally {
-      if (browser) await browser.close();
-    }
-    
-    const finalInfo = {
-      name: apiData?.name || (name.charAt(0).toUpperCase() + name.slice(1)),
-      role: apiData?.role || "Não especificado",
-      damageType: scrapedGeneralInfo.damageType, 
-      image: apiData?.assets?.icon || "",
-      builds: scrapedBuilds || [],
-    };
-  
-    cache.set(name, finalInfo);
-    return finalInfo;
   }
+}
+
+// -----------------------------------------------------------------------------
+// Função principal de scraping
+// -----------------------------------------------------------------------------
+async function getPokemonInfo(name) {
+  name = name.toLowerCase();
+  const cached = cache.get(name);
+  if (cached) {
+    console.log(`Retornando dados de '${name}' do cache.`);
+    return cached;
+  }
+
+  let apiData = null;
+  try {
+    const res = await axios.get(`https://uniteapi.dev/p/${name}?type=auto`);
+    apiData = res.data;
+    console.log(`Dados de '${name}' obtidos da API.`);
+  } catch (err) {
+    console.log("API não retornou dados. Prosseguindo com scraping no Unite-DB.");
+  }
+
+  let scrapedBuilds = [];
+  let scrapedGeneralInfo = { damageType: "Não especificado" };
+  let browser, page;
+
+  try {
+    console.log(`Iniciando scraping para '${name}' no Unite-DB...`);
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+      ignoreHTTPSErrors: true,
+    });
+
+    page = await browser.newPage();
+    await page.setViewport({ width: 1366, height: 900 });
+
+    const url = `https://unite-db.com/pokemon/${name}`;
+    console.log(`Navegando para: ${url}`);
+
+    // Garante carregamento da página com retry
+    await retryOperation(
+      () => page.goto(url, { waitUntil: "networkidle2", timeout: 45000 }),
+      2,
+      2000,
+      "page.goto"
+    );
+
+    // Capturar tipo de dano
+    console.log("Capturando informações gerais...");
+    await retryOperation(
+      () => page.waitForSelector(".character-info .damage-wrapper h3", { timeout: 30000 }),
+      2,
+      2000,
+      "waitForSelector(damage-wrapper)"
+    );
+
+    scrapedGeneralInfo = await page.evaluate(() => {
+      return {
+        damageType:
+          document.querySelector(".damage-wrapper > h3")?.textContent.trim() || "Não especificado",
+      };
+    });
+    console.log(`Tipo de Dano encontrado: ${scrapedGeneralInfo.damageType}`);
+
+    // Abrir aba de builds
+    const buildsTabSelector = "#app > div.container > section > ul > li:nth-child(2)";
+    await retryOperation(
+      () => page.waitForSelector(buildsTabSelector, { timeout: 30000 }),
+      2,
+      2000,
+      "waitForSelector(buildsTab)"
+    );
+    await page.click(buildsTabSelector);
+
+    // Esperar builds renderizarem
+    console.log("Aguardando todas as builds serem renderizadas...");
+    await retryOperation(
+      () =>
+        page.waitForFunction(
+          () => {
+            const buildContainers = document.querySelectorAll("div.details.builds div.build");
+            return (
+              buildContainers.length > 0 &&
+              Array.from(buildContainers).every((build) =>
+                build.querySelector(".selected-abilities .ability-icon")
+              )
+            );
+          },
+          { timeout: 45000 }
+        ),
+      2,
+      2000,
+      "waitForFunction(builds carregadas)"
+    );
+    console.log("Todas as builds foram carregadas.");
+
+    // Extrair dados
+    scrapedBuilds = await page.evaluate(() => {
+      const normalizeName = (s) => {
+        if (!s) return "";
+        return s.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+      };
+
+      const buildEls = document.querySelectorAll("div.details.builds div.build");
+      const builds = [];
+
+      buildEls.forEach((buildEl) => {
+        const build = {
+          buildName: buildEl.querySelector("h3.title")?.textContent.trim(),
+          path: buildEl.querySelector("p.lane")?.textContent.trim(),
+          moves: [],
+          heldItems: [],
+          battleItem: null,
+          emblemLoadout: "",
+        };
+
+        buildEl.querySelectorAll(".selected-abilities .ability").forEach((moveEl) => {
+          const img = moveEl.querySelector(".ability-icon");
+          const level = moveEl.querySelector("p.level")?.textContent.trim();
+          if (img && img.src) {
+            const fileName = img.src.split("/").pop();
+            const moveName = decodeURIComponent(fileName).replace(".png", "").trim();
+            build.moves.push({ name: moveName, level: level });
+          }
+        });
+
+        buildEl.querySelectorAll(".wrapper.held:not(.optional) section.item").forEach((itemEl) => {
+          const href = itemEl.querySelector("a.item-name")?.href;
+          if (href) build.heldItems.push({ name: normalizeName(href.split("/").pop()) });
+        });
+
+        const battleItemElement = buildEl.querySelector(
+          ".wrapper.battle:not(.optional) section.item a.item-name"
+        );
+        if (battleItemElement) {
+          build.battleItem = { name: normalizeName(battleItemElement.href.split("/").pop()) };
+        }
+
+        const emblemLink = buildEl.querySelector(".emblem-loadout a");
+        if (emblemLink) build.emblemLoadout = emblemLink.href;
+
+        builds.push(build);
+      });
+
+      return builds;
+    });
+  } catch (err) {
+    console.error(`Erro no scraping para '${name}':`, err.message);
+  } finally {
+    if (browser) await browser.close();
+  }
+
+  const finalInfo = {
+    name: apiData?.name || name.charAt(0).toUpperCase() + name.slice(1),
+    role: apiData?.role || "Não especificado",
+    damageType: scrapedGeneralInfo.damageType,
+    image: apiData?.assets?.icon || "",
+    builds: scrapedBuilds || [],
+  };
+
+  cache.set(name, finalInfo);
+  return finalInfo;
+}
+
 
 // -----------------------------------------------------------------------------
 // 4. LOGIN DO BOT
