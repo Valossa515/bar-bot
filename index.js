@@ -235,7 +235,7 @@ async function getPokemonInfo(name) {
               )
             );
           },
-          { timeout: 45000 }
+          { timeout: 90000 }
         ),
       2,
       2000,
