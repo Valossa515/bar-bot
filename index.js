@@ -188,7 +188,7 @@ async function getPokemonInfo(name) {
 
     // Garante carregamento da página com retry
     await retryOperation(
-      () => page.goto(url, { waitUntil: "networkidle2", timeout: 45000 }),
+      () => page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 }),
       2,
       2000,
       "page.goto"
